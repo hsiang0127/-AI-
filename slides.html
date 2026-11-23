@@ -1,0 +1,1550 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>從高空看懂誰在動｜無人機間隔航測影像的移動物件追蹤</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=Noto+Serif+TC:wght@400;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --washi: #F6F2EA;
+    --washi-card: #FCF9F4;
+    --washi-warm: #EDE6D9;
+    --ink: #2A2825;
+    --ink-soft: #59544C;
+    --ink-muted: #8A8378;
+    --line: rgba(42, 40, 37, 0.14);
+    --line-strong: rgba(42, 40, 37, 0.28);
+    --vermilion: #B85A3A;
+    --vermilion-soft: rgba(184, 90, 58, 0.11);
+    --indigo: #3A546A;
+    --indigo-soft: rgba(58, 84, 106, 0.10);
+    --matcha: #5A705B;
+    --matcha-soft: rgba(90, 112, 91, 0.11);
+    --serif: "Noto Serif TC", "Songti TC", "PMingLiU", serif;
+    --sans: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+    --mono: ui-monospace, "Cascadia Code", "Consolas", monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #EAE4D8;
+    color: var(--ink);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Main Stage */
+  .stage {
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 18px 24px 58px;
+    position: relative;
+  }
+
+  /* 16:9 Slide Frame */
+  .deck {
+    width: min(1240px, 95vw, calc((100vh - 80px) * 16 / 9));
+    aspect-ratio: 16 / 9;
+    position: relative;
+    background: var(--washi);
+    border: 1px solid var(--line-strong);
+    box-shadow: 0 22px 60px rgba(42, 40, 37, 0.12), 0 2px 10px rgba(42, 40, 37, 0.06);
+    overflow: hidden;
+  }
+
+  /* Subtle washi paper texture */
+  .deck::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      radial-gradient(rgba(184, 90, 58, 0.025) 1px, transparent 0),
+      radial-gradient(rgba(58, 84, 106, 0.025) 1px, transparent 0);
+    background-size: 28px 28px;
+    background-position: 0 0, 14px 14px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .slide {
+    position: absolute;
+    inset: 0;
+    padding: 40px 54px 48px;
+    display: flex;
+    flex-direction: column;
+    opacity: 0;
+    transform: translateY(10px);
+    pointer-events: none;
+    transition: opacity 0.42s ease, transform 0.42s ease;
+    z-index: 1;
+  }
+
+  .slide.active {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+    z-index: 2;
+  }
+
+  /* Top Editorial Header */
+  .slide-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 22px;
+    flex-shrink: 0;
+  }
+
+  .kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    letter-spacing: 0.16em;
+    color: var(--ink-muted);
+    font-weight: 500;
+  }
+
+  .seal {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border: 1.5px solid var(--vermilion);
+    color: var(--vermilion);
+    font-family: var(--serif);
+    font-size: 11px;
+    font-weight: 700;
+    border-radius: 2px;
+  }
+
+  .wiki-ref {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--indigo);
+    background: var(--indigo-soft);
+    padding: 3px 9px;
+    border-radius: 2px;
+    letter-spacing: 0.02em;
+  }
+
+  /* Typography */
+  h1 {
+    font-family: var(--serif);
+    font-weight: 700;
+    color: var(--ink);
+    line-height: 1.3;
+    letter-spacing: 0.04em;
+  }
+
+  h2 {
+    font-family: var(--serif);
+    font-size: clamp(22px, 2.2vw, 30px);
+    font-weight: 600;
+    color: var(--ink);
+    line-height: 1.32;
+    letter-spacing: 0.03em;
+    margin-bottom: 14px;
+  }
+
+  h3 {
+    font-family: var(--serif);
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--ink);
+    margin-bottom: 6px;
+  }
+
+  p, li {
+    font-size: 14.5px;
+    line-height: 1.72;
+    color: var(--ink-soft);
+  }
+
+  .analogy {
+    background: var(--washi-card);
+    border-left: 3px solid var(--vermilion);
+    padding: 11px 16px;
+    margin-bottom: 16px;
+    font-size: 14px;
+    color: var(--ink);
+    line-height: 1.65;
+  }
+
+  .analogy strong {
+    color: var(--vermilion);
+    font-weight: 600;
+  }
+
+  /* Layouts */
+  .slide-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1.05fr 0.95fr;
+    gap: 32px;
+    align-items: center;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .grid-2-wide-right {
+    display: grid;
+    grid-template-columns: 0.92fr 1.08fr;
+    gap: 30px;
+    align-items: center;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+  }
+
+  /* Bullet List */
+  .clean-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .clean-list li {
+    position: relative;
+    padding-left: 18px;
+  }
+
+  .clean-list li::before {
+    content: "—";
+    position: absolute;
+    left: 0;
+    color: var(--vermilion);
+    font-weight: 700;
+  }
+
+  .clean-list strong {
+    color: var(--ink);
+    font-weight: 600;
+  }
+
+  /* Stat Badges */
+  .stat-row {
+    display: flex;
+    gap: 12px;
+    margin-top: 14px;
+    flex-wrap: wrap;
+  }
+
+  .stat-box {
+    background: var(--washi-card);
+    border: 1px solid var(--line);
+    padding: 9px 14px;
+    flex: 1;
+    min-width: 115px;
+  }
+
+  .stat-num {
+    font-family: var(--serif);
+    font-size: 21px;
+    font-weight: 700;
+    color: var(--vermilion);
+    line-height: 1.2;
+  }
+
+  .stat-num.indigo { color: var(--indigo); }
+  .stat-num.matcha { color: var(--matcha); }
+
+  .stat-label {
+    font-size: 11.5px;
+    color: var(--ink-muted);
+    margin-top: 2px;
+  }
+
+  /* Subtle Note / Foreshadowing */
+  .footnote-box {
+    margin-top: 14px;
+    padding: 9px 14px;
+    background: var(--indigo-soft);
+    border-left: 2.5px solid var(--indigo);
+    font-size: 13px;
+    color: var(--indigo);
+    line-height: 1.55;
+  }
+
+  .footnote-box.warn {
+    background: var(--vermilion-soft);
+    border-left-color: var(--vermilion);
+    color: #8F3E23;
+  }
+
+  /* Visual Panel */
+  .visual-card {
+    background: var(--washi-card);
+    border: 1px solid var(--line);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    max-height: 100%;
+    overflow: hidden;
+  }
+
+  .visual-card svg {
+    width: 100%;
+    height: auto;
+    max-height: 360px;
+    display: block;
+  }
+
+  .visual-caption {
+    margin-top: 8px;
+    font-size: 11.5px;
+    color: var(--ink-muted);
+    letter-spacing: 0.04em;
+    text-align: center;
+  }
+
+  /* Cover Slide */
+  .cover-layout {
+    display: grid;
+    grid-template-columns: 1.05fr 0.95fr;
+    gap: 36px;
+    align-items: center;
+    height: 100%;
+  }
+
+  .cover-title {
+    font-size: clamp(32px, 3.3vw, 44px);
+    margin: 14px 0 14px;
+    line-height: 1.28;
+  }
+
+  .cover-sub {
+    font-size: 16px;
+    color: var(--ink-soft);
+    line-height: 1.75;
+    margin-bottom: 22px;
+  }
+
+  .cover-quote {
+    border-top: 1px solid var(--line-strong);
+    border-bottom: 1px solid var(--line-strong);
+    padding: 14px 0;
+    font-family: var(--serif);
+    font-size: 15px;
+    color: var(--ink);
+    line-height: 1.7;
+  }
+
+  .cover-meta {
+    margin-top: 18px;
+    font-size: 12px;
+    color: var(--ink-muted);
+    letter-spacing: 0.08em;
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .art-frame {
+    position: relative;
+    border: 1px solid var(--line-strong);
+    padding: 10px;
+    background: var(--washi-card);
+  }
+
+  .art-frame img {
+    width: 100%;
+    height: auto;
+    display: block;
+    object-fit: cover;
+  }
+
+  .vert-stamp {
+    position: absolute;
+    right: 18px;
+    top: 50%;
+    transform: translateY(-50%);
+    writing-mode: vertical-rl;
+    font-family: var(--serif);
+    font-size: 11px;
+    letter-spacing: 0.35em;
+    color: rgba(42, 40, 37, 0.25);
+    pointer-events: none;
+  }
+
+  /* Table Styling */
+  table.zen-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    background: var(--washi-card);
+  }
+
+  table.zen-table th {
+    font-family: var(--serif);
+    font-weight: 600;
+    text-align: left;
+    padding: 10px 12px;
+    border-top: 1.5px solid var(--ink);
+    border-bottom: 1px solid var(--line-strong);
+    color: var(--ink);
+    background: var(--washi-warm);
+  }
+
+  table.zen-table td {
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--line);
+    color: var(--ink-soft);
+    vertical-align: top;
+    line-height: 1.5;
+  }
+
+  table.zen-table td strong { color: var(--ink); }
+
+  .pill {
+    display: inline-block;
+    padding: 2px 7px;
+    font-size: 11px;
+    border-radius: 2px;
+    font-weight: 500;
+  }
+  .pill-v { background: var(--vermilion-soft); color: var(--vermilion); }
+  .pill-i { background: var(--indigo-soft); color: var(--indigo); }
+  .pill-m { background: var(--matcha-soft); color: var(--matcha); }
+
+  /* Card Grid */
+  .zen-card {
+    background: var(--washi-card);
+    border: 1px solid var(--line);
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .zen-card .card-num {
+    font-family: var(--serif);
+    font-size: 12px;
+    color: var(--vermilion);
+    letter-spacing: 0.14em;
+  }
+
+  /* Formula Box */
+  .formula-box {
+    font-family: var(--serif);
+    font-size: 18px;
+    text-align: center;
+    padding: 10px 14px;
+    background: var(--washi-warm);
+    border: 1px solid var(--line-strong);
+    color: var(--ink);
+    letter-spacing: 0.04em;
+    margin: 10px 0;
+  }
+
+  /* Bottom Navigation Bar */
+  .nav-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 46px;
+    background: rgba(246, 242, 234, 0.95);
+    border-top: 1px solid var(--line-strong);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 28px;
+    z-index: 20;
+    backdrop-filter: blur(6px);
+  }
+
+  .progress-track {
+    position: absolute;
+    top: -1px;
+    left: 0;
+    right: 0;
+    height: 2.5px;
+    background: transparent;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: var(--vermilion);
+    transition: width 0.35s ease;
+  }
+
+  .nav-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-size: 12px;
+    color: var(--ink-muted);
+  }
+
+  .nav-title {
+    font-family: var(--serif);
+    color: var(--ink);
+    font-weight: 600;
+  }
+
+  .nav-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .nav-btn {
+    background: var(--washi-card);
+    border: 1px solid var(--line-strong);
+    color: var(--ink);
+    padding: 5px 12px;
+    font-size: 12px;
+    font-family: var(--sans);
+    cursor: pointer;
+    border-radius: 2px;
+    transition: all 0.2s ease;
+  }
+
+  .nav-btn:hover {
+    background: var(--ink);
+    color: var(--washi);
+    border-color: var(--ink);
+  }
+
+  .nav-counter {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-soft);
+    min-width: 62px;
+    text-align: center;
+  }
+
+  /* Overview Modal */
+  .overview-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(42, 40, 37, 0.72);
+    z-index: 50;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+    backdrop-filter: blur(4px);
+  }
+
+  .overview-overlay.open { display: flex; }
+
+  .overview-panel {
+    background: var(--washi);
+    border: 1px solid var(--line-strong);
+    width: min(1040px, 94vw);
+    max-height: 84vh;
+    overflow-y: auto;
+    padding: 28px 32px;
+  }
+
+  .overview-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 12px;
+    margin-bottom: 18px;
+  }
+
+  .overview-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 12px;
+  }
+
+  .ov-item {
+    background: var(--washi-card);
+    border: 1px solid var(--line);
+    padding: 12px 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: left;
+  }
+
+  .ov-item:hover, .ov-item.current {
+    border-color: var(--vermilion);
+    background: #FFFDF9;
+  }
+
+  .ov-num {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--vermilion);
+    margin-bottom: 4px;
+  }
+
+  .ov-title {
+    font-family: var(--serif);
+    font-size: 13.5px;
+    color: var(--ink);
+    font-weight: 600;
+    line-height: 1.4;
+  }
+
+  .ov-src {
+    margin-top: 6px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--indigo);
+  }
+
+  /* Print fallback */
+  @media print {
+    html, body { overflow: visible; height: auto; background: #fff; }
+    .stage { padding: 0; height: auto; display: block; }
+    .deck { width: 100%; height: auto; aspect-ratio: auto; border: none; box-shadow: none; }
+    .slide { position: relative; opacity: 1; transform: none; pointer-events: auto; page-break-after: always; min-height: 680px; }
+    .nav-bar, .overview-overlay { display: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="stage">
+  <div class="deck" id="deck">
+    <div class="vert-stamp">無人機間隔航測移動物件追蹤</div>
+
+    <!-- ==================== SLIDE 01 ==================== -->
+    <section class="slide active" data-title="封面：從高空看懂誰在動" data-wiki="[[UAV-Tracking-Geolocation-Synthesis]]">
+      <div class="slide-body cover-layout">
+        <div>
+          <div class="kicker"><span class="seal">序</span> LLM WIKI 教學簡報｜無人機航測追蹤</div>
+          <h1 class="cover-title">從高空看懂誰在動</h1>
+          <p class="cover-sub">無人機間隔航測影像的移動物件追蹤與「定位不確定性」</p>
+          <div class="cover-quote">
+            當照片不是連續影片、GPS 還會飄移時，<br />
+            我們如何分辨「車真的在動」還是「定位在晃」？
+          </div>
+          <div class="cover-meta">
+            <span>知識庫：5 篇核心論文 / 22 頁 Wiki</span>
+            <span>閱讀對象：零基礎教學</span>
+          </div>
+        </div>
+        <div class="art-frame">
+          <img src="assets/cover-uav-washi.jpg" alt="日式水彩版畫風無人機高空航測插畫" />
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== SLIDE 02 ==================== -->
+    <section class="slide" data-title="為什麼「間隔航測」特別難追蹤？" data-wiki="[[UAV-Multi-Object-Tracking]]">
+      <div class="slide-top">
+        <div class="kicker"><span class="seal">一</span> 問題引入｜PROBLEM &amp; MOTIVATION</div>
+        <span class="wiki-ref">Wiki: [[UAV-Multi-Object-Tracking]] · Master-Research-Proposal</span>
+      </div>
+      <h2>為什麼「間隔航測」比一般影片難追蹤？</h2>
+      <div class="analogy">
+        <strong>生活類比：</strong>看 30 FPS 影片像翻「連環動畫」，前後頁只差一點點；看測繪間隔照片像翻「相簿」，就算畫面重疊 80%，兩張之間車子早已開出好幾公尺。
+      </div>
+      <div class="grid-2">
+        <ul class="clean-list">
+          <li><strong>跨照片關聯中斷（IoU = 0）</strong>：無人機視角大幅移動＋目標位移遠，前後影像框完全不重疊，傳統追蹤器直接認不得。</li>
+          <li><strong>假位移陷阱</strong>：相機姿態、地形高程（DSM）與參考點誤差，會讓「停在路邊的車」在兩張照片算出不同地理座標。</li>
+          <li><strong>近即時發布時限</strong>：測繪任務進行期間就要持續更新 ID、速度與方向，不能等整趟飛完才事後慢慢算。</li>
+        </ul>
+        <div class="visual-card">
+          <svg viewBox="0 0 460 270" xmlns="http://www.w3.org/2000/svg">
+            <!-- Left: Video -->
+            <rect x="12" y="14" width="204" height="236" fill="#F6F2EA" stroke="#2A2825" stroke-opacity="0.2" rx="3"/>
+            <text x="114" y="38" text-anchor="middle" font-family="Noto Serif TC, serif" font-size="13" fill="#3A546A" font-weight="600">連續影片（30 FPS）</text>
+            <rect x="46" y="74" width="66" height="44" fill="rgba(58,84,106,0.14)" stroke="#3A546A" stroke-width="1.5" stroke-dasharray="4 3"/>
+            <rect x="64" y="84" width="66" height="44" fill="rgba(90,112,91,0.18)" stroke="#5A705B" stroke-width="1.8"/>
+            <text x="114" y="156" text-anchor="middle" font-size="12" fill="#59544C">前後框高度重疊（IoU 高）</text>
+            <text x="114" y="176" text-anchor="middle" font-size="11.5" fill="#5A705B">→ 靠畫面位置就能輕鬆連起來</text>
+            <line x1="36" y1="212" x2="192" y2="212" stroke="#3A546A" stroke-width="1.2"/>
+            <circle cx="52" cy="212" r="4" fill="#3A546A"/>
+            <circle cx="84" cy="212" r="4" fill="#3A546A"/>
+            <circle cx="116" cy="212" r="4" fill="#3A546A"/>
+            <circle cx="148" cy="212" r="4" fill="#3A546A"/>
+            <circle cx="180" cy="212" r="4" fill="#3A546A"/>
+            <text x="114" y="234" text-anchor="middle" font-size="10.5" fill="#8A8378">時間幾乎連續</text>
+
+            <!-- Right: Interval Photogrammetry -->
+            <rect x="242" y="14" width="206" height="236" fill="#F6F2EA" stroke="#B85A3A" stroke-opacity="0.45" rx="3"/>
+            <text x="345" y="38" text-anchor="middle" font-family="Noto Serif TC, serif" font-size="13" fill="#B85A3A" font-weight="600">間隔航測影像（等距回傳）</text>
+            <rect x="260" y="64" width="52" height="36" fill="rgba(58,84,106,0.14)" stroke="#3A546A" stroke-width="1.5" stroke-dasharray="4 3"/>
+            <rect x="374" y="102" width="52" height="36" fill="rgba(184,90,58,0.16)" stroke="#B85A3A" stroke-width="1.8"/>
+            <path d="M 314 82 Q 345 78 370 116" fill="none" stroke="#B85A3A" stroke-width="1.5" stroke-dasharray="3 3"/>
+            <text x="345" y="156" text-anchor="middle" font-size="12" fill="#B85A3A" font-weight="600">大位移＋視角變換（IoU = 0）</text>
+            <text x="345" y="176" text-anchor="middle" font-size="11.5" fill="#59544C">靜止車也因定位誤差看似移動</text>
+            <line x1="266" y1="212" x2="424" y2="212" stroke="#B85A3A" stroke-width="1.2" stroke-dasharray="4 4"/>
+            <circle cx="274" cy="212" r="5" fill="#B85A3A"/>
+            <circle cx="416" cy="212" r="5" fill="#B85A3A"/>
+            <text x="345" y="234" text-anchor="middle" font-size="10.5" fill="#8A8378">曝光間隔大，需實際時間計算</text>
+          </svg>
+          <div class="visual-caption">圖 1：連續影片與間隔航測影像在目標重疊與時間連續性上的本質差異</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== SLIDE 03 ==================== -->
+    <section class="slide" data-title="知識地圖：5 篇論文拼出什麼全貌？" data-wiki="[[UAV-Tracking-Geolocation-Synthesis]]">
+      <div class="slide-top">
+        <div class="kicker"><span class="seal">二</span> 知識地圖｜ROADMAP FROM LLM WIKI</div>
+        <span class="wiki-ref">Wiki: [[UAV-Tracking-Geolocation-Synthesis]] · index.md</span>
+      </div>
+      <h2>從 5 篇關鍵論文，一步步拼出完整解法</h2>
+      <p style="margin-bottom: 14px;">我們的 LLM Wiki 整理了無人機追蹤領域五塊關鍵拼圖——從 2D 影像外觀出發，一路走向 3D 世界座標、誤差橢圓與動靜判斷：</p>
+      <div class="visual-card" style="padding: 20px 18px;">
+        <svg viewBox="0 0 980 275" xmlns="http://www.w3.org/2000/svg">
+          <!-- Connecting line -->
+          <line x1="95" y1="110" x2="885" y2="110" stroke="#2A2825" stroke-opacity="0.25" stroke-width="1.8" stroke-dasharray="5 5"/>
+          <!-- Node 1 -->
+          <g transform="translate(20, 24)">
+            <rect width="166" height="196" rx="3" fill="#F6F2EA" stroke="#3A546A" stroke-width="1.4"/>
+            <circle cx="83" cy="86" r="18" fill="#3A546A"/>
+            <text x="83" y="91" text-anchor="middle" fill="#F6F2EA" font-family="Noto Serif TC" font-size="13" font-weight="700">01</text>
+            <text x="83" y="30" text-anchor="middle" fill="#3A546A" font-size="11" font-weight="600">2D 外觀引導</text>
+            <text x="83" y="52" text-anchor="middle" fill="#2A2825" font-family="Noto Serif TC" font-size="15" font-weight="700">AMOT (2026)</text>
+            <text x="83" y="132" text-anchor="middle" fill="#59544C" font-size="12">外觀雙向互驗</text>
+            <text x="83" y="150" text-anchor="middle" fill="#59544C" font-size="12">漏偵測自動接續</text>
+            <text x="83" y="178" text-anchor="middle" fill="#8A8378" font-size="11">VisDrone IDs -72%</text>
+          </g>
+          <!-- Node 2 -->
+          <g transform="translate(212, 24)">
+            <rect width="166" height="196" rx="3" fill="#F6F2EA" stroke="#5A705B" stroke-width="1.4"/>
+            <circle cx="83" cy="86" r="18" fill="#5A705B"/>
+            <text x="83" y="91" text-anchor="middle" fill="#F6F2EA" font-family="Noto Serif TC" font-size="13" font-weight="700">02</text>
+            <text x="83" y="30" text-anchor="middle" fill="#5A705B" font-size="11" font-weight="600">局部特徵幾何</text>
+            <text x="83" y="52" text-anchor="middle" fill="#2A2825" font-family="Noto Serif TC" font-size="15" font-weight="700">LightGlue (2023)</text>
+            <text x="83" y="132" text-anchor="middle" fill="#59544C" font-size="12">保留關鍵點分布</text>
+            <text x="83" y="150" text-anchor="middle" fill="#59544C" font-size="12">自適應提早停止</text>
+            <text x="83" y="178" text-anchor="middle" fill="#8A8378" font-size="11">比 SuperGlue 快 2.2×</text>
+          </g>
+          <!-- Node 3 -->
+          <g transform="translate(404, 24)">
+            <rect width="166" height="196" rx="3" fill="#F6F2EA" stroke="#3A546A" stroke-width="1.4"/>
+            <circle cx="83" cy="86" r="18" fill="#3A546A"/>
+            <text x="83" y="91" text-anchor="middle" fill="#F6F2EA" font-family="Noto Serif TC" font-size="13" font-weight="700">03</text>
+            <text x="83" y="30" text-anchor="middle" fill="#3A546A" font-size="11" font-weight="600">3D 世界座標</text>
+            <text x="83" y="52" text-anchor="middle" fill="#2A2825" font-family="Noto Serif TC" font-size="15" font-weight="700">MG-MOT (2024)</text>
+            <text x="83" y="132" text-anchor="middle" fill="#59544C" font-size="12">UAV GPS/雲台投影</text>
+            <text x="83" y="150" text-anchor="middle" fill="#59544C" font-size="12">長時程重辨識</text>
+            <text x="83" y="178" text-anchor="middle" fill="#8A8378" font-size="11">IDF1 +17.2% (第1名)</text>
+          </g>
+          <!-- Node 4 -->
+          <g transform="translate(596, 24)">
+            <rect width="166" height="196" rx="3" fill="#F6F2EA" stroke="#B85A3A" stroke-width="1.6"/>
+            <circle cx="83" cy="86" r="18" fill="#B85A3A"/>
+            <text x="83" y="91" text-anchor="middle" fill="#F6F2EA" font-family="Noto Serif TC" font-size="13" font-weight="700">04</text>
+            <text x="83" y="30" text-anchor="middle" fill="#B85A3A" font-size="11" font-weight="600">投影誤差橢圓</text>
+            <text x="83" y="52" text-anchor="middle" fill="#2A2825" font-family="Noto Serif TC" font-size="15" font-weight="700">UCMCTrack (2024)</text>
+            <text x="83" y="132" text-anchor="middle" fill="#59544C" font-size="12">地面協方差傳播</text>
+            <text x="83" y="150" text-anchor="middle" fill="#59544C" font-size="12">映射馬氏距離關聯</text>
+            <text x="83" y="178" text-anchor="middle" fill="#B85A3A" font-size="11">&gt;1000 FPS 純運動</text>
+          </g>
+          <!-- Node 5 -->
+          <g transform="translate(788, 24)">
+            <rect width="172" height="196" rx="3" fill="#F6F2EA" stroke="#B85A3A" stroke-width="1.6"/>
+            <circle cx="86" cy="86" r="18" fill="#B85A3A"/>
+            <text x="86" y="91" text-anchor="middle" fill="#F6F2EA" font-family="Noto Serif TC" font-size="13" font-weight="700">05</text>
+            <text x="86" y="30" text-anchor="middle" fill="#B85A3A" font-size="11" font-weight="600">相對地面動靜</text>
+            <text x="86" y="52" text-anchor="middle" fill="#2A2825" font-family="Noto Serif TC" font-size="15" font-weight="700">MoD2T (2024)</text>
+            <text x="86" y="132" text-anchor="middle" fill="#59544C" font-size="12">位移＋背景雙線索</text>
+            <text x="86" y="150" text-anchor="middle" fill="#59544C" font-size="12">定義 MVF1 基準</text>
+            <text x="86" y="178" text-anchor="middle" fill="#B85A3A" font-size="11">慢速 0.827 / 快速 0.230</text>
+          </g>
+          <!-- Bottom Banner -->
+          <rect x="20" y="236" width="940" height="30" rx="2" fill="rgba(184,90,58,0.10)"/>
+          <text x="490" y="256" text-anchor="middle" fill="#8F3E23" font-family="Noto Serif TC" font-size="13" font-weight="600">最終匯流 → 本研究核心：校準跨照片定位誤差，改善三態動靜判斷與有限延遲近即時追蹤</text>
+        </svg>
+      </div>
+    </section>
+
+    <!-- ==================== SLIDE 04 ==================== -->
+    <section class="slide" data-title="拼圖一：AMOT 雙向外觀互驗" data-wiki="[[Ma2026-AMOT]] · [[AMOT]]">
+      <div class="slide-top">
+        <div class="kicker"><span class="seal">參</span> 拼圖一｜2D 外觀引導運動建模</div>
+        <span class="wiki-ref">Wiki: [[Ma2026-AMOT]] · [[AMOT]] · [[VisDrone]]</span>
+      </div>
+      <h2>無人機一直晃，怎麼靠「雙向外觀」不跟丟？</h2>
+      <div class="grid-2">
+        <div>
+          <div class="analogy">
+            <strong>生活類比：</strong>找人不只「拿舊照片在人群中找他」，還要「拿找到的人反推回舊照片確認是同一格」——雙向都對得上才算匹配。
+          </div>
+          <ul class="clean-list">
+            <li><strong>AMC 雙向一致性</strong>：免訓練，透過前向與後向密集 ReID 回應圖峰值距離（<i>D</i><sub>f</sub> + <i>D</i><sub>b</sub>）抑制視角劇烈晃動的誤配。</li>
+            <li><strong>MTC 漏偵測延續</strong>：漏偵測時比對 Kalman 預測與外觀峰值，吻合就自動延續軌跡，避免斷軌換 ID。</li>
+          </ul>
+          <div class="stat-row">
+            <div class="stat-box"><div class="stat-num">-72.4%</div><div class="stat-label">VisDrone ID 切換 (3847→1063)</div></div>
+            <div class="stat-box"><div class="stat-num indigo">61.4%</div><div class="stat-label">VisDrone IDF1 (+7.0%)</div></div>
+            <div class="stat-box"><div class="stat-num matcha">36.4</div><div class="stat-label">FPS 即時速度</div></div>
+          </div>
+          <div class="footnote-box warn">
+            <strong>埋下伏筆：</strong>AMOT 完全在 2D 影像運作，無法分辨像素位移是「車在動」還是「無人機在晃」；間隔變長時全域搜尋也易誤鎖相似車。
+          </div>
+        </div>
+        <div class="visual-card">
+          <svg viewBox="0 0 420 290" xmlns="http://www.w3.org/2000/svg">
+            <!-- Frame t-1 -->
+            <rect x="20" y="24" width="150" height="190" fill="#F6F2EA" stroke="#3A546A" stroke-width="1.5" rx="3"/>
+            <text x="95" y="48" text-anchor="middle" font-family="Noto Serif TC" font-size="13" fill="#3A546A" font-weight="600">前一幀 t - 1</text>
+            <rect x="55" y="84" width="52" height="36" fill="rgba(58,84,106,0.16)" stroke="#3A546A" stroke-width="1.6"/>
+            <circle cx="81" cy="102" r="4.5" fill="#3A546A"/>
+            <text x="81" y="138" text-anchor="middle" font-size="11" fill="#3A546A">軌跡中心 O_trk</text>
+
+            <!-- Frame t -->
+            <rect x="250" y="24" width="150" height="190" fill="#F6F2EA" stroke="#B85A3A" stroke-width="1.5" rx="3"/>
+            <text x="325" y="48" text-anchor="middle" font-family="Noto Serif TC" font-size="13" fill="#B85A3A" font-weight="600">當前幀 t</text>
+            <circle cx="332" cy="144" r="26" fill="rgba(184,90,58,0.14)"/>
+            <rect x="306" y="126" width="52" height="36" fill="none" stroke="#B85A3A" stroke-width="1.6"/>
+            <circle cx="332" cy="144" r="4.5" fill="#B85A3A"/>
+            <text x="332" y="182" text-anchor="middle" font-size="11" fill="#B85A3A">偵測中心 O_det</text>
+
+            <!-- Forward Arrow -->
+            <path d="M 110 96 C 180 62, 235 82, 316 134" fill="none" stroke="#3A546A" stroke-width="2" marker-end="url(#arrowI)"/>
+            <rect x="166" y="64" width="88" height="22" rx="2" fill="#FCF9F4" stroke="#3A546A" stroke-opacity="0.4"/>
+            <text x="210" y="79" text-anchor="middle" font-size="11" fill="#3A546A" font-weight="600">前向互驗 D_f</text>
+
+            <!-- Backward Arrow -->
+            <path d="M 316 154 C 240 198, 175 182, 92 114" fill="none" stroke="#B85A3A" stroke-width="2" stroke-dasharray="5 3" marker-end="url(#arrowV)"/>
+            <rect x="166" y="176" width="88" height="22" rx="2" fill="#FCF9F4" stroke="#B85A3A" stroke-opacity="0.4"/>
+            <text x="210" y="191" text-anchor="middle" font-size="11" fill="#B85A3A" font-weight="600">後向互驗 D_b</text>
+
+            <text x="210" y="252" text-anchor="middle" font-size="12" fill="#2A2825" font-weight="600">兩向峰值距離都小 → 高外觀－運動一致性</text>
+            <text x="210" y="272" text-anchor="middle" font-size="11" fill="#8A8378">C_AMC 結合 C_IOU 與 C_App 一次完成關聯</text>
+
+            <defs>
+              <marker id="arrowI" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#3A546A"/></marker>
+              <marker id="arrowV" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#B85A3A"/></marker>
+            </defs>
+          </svg>
+          <div class="visual-caption">圖 2：AMOT 外觀引導雙向空間一致性（AMC）核心直覺</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== SLIDE 05 ==================== -->
+    <section class="slide" data-title="拼圖二：LightGlue 局部特徵幾何" data-wiki="[[Lindenberger2023-LightGlue]] · [[LightGlue]]">
+      <div class="slide-top">
+        <div class="kicker"><span class="seal">肆</span> 拼圖二｜跨視角局部特徵匹配</div>
+        <span class="wiki-ref">Wiki: [[Lindenberger2023-LightGlue]] · [[LightGlue]] · [[Local-Feature-Matching]]</span>
+      </div>
+      <h2>不只看「整張臉」，還要記住局部幾何結構</h2>
+      <div class="grid-2">
+        <div>
+          <div class="analogy">
+            <strong>生活類比：</strong>像人類比對兩張照片——「簡單的圖瞄一眼就確定，難的圖才多想幾層」，而且直接把肯定對不上的雜訊點提早丟掉。
+          </div>
+          <ul class="clean-list">
+            <li><strong>保留關鍵點空間分布</strong>：可搭配 SuperPoint / SIFT，保留 2D 局部幾何配置，在大視角變化下驗證<strong>剛體一致性</strong>。</li>
+            <li><strong>自適應深度＋寬度剪枝</strong>：每層注入相對位置（RoPE）；信心達 95% 即提早停止，不可匹配點提早剪除（19.8%～27.9%）。</li>
+          </ul>
+          <div class="stat-row">
+            <div class="stat-box"><div class="stat-num matcha">31.4 ms</div><div class="stat-label">比 SuperGlue 快 2.2×</div></div>
+            <div class="stat-box"><div class="stat-num indigo">4.7 層</div><div class="stat-label">簡單影像對平均提早停止</div></div>
+            <div class="stat-box"><div class="stat-num">+8.7</div><div class="stat-label">搭配 SIFT AUC@5° 提升</div></div>
+          </div>
+          <div class="footnote-box">
+            <strong>航測實務提醒：</strong>LightGlue 在靜態場景訓練，用於追蹤移動小剛體時，須在物件裁切區（ROI）內比對，避免車上關鍵點被當成外點剪掉。
+          </div>
+        </div>
+        <div class="visual-card">
+          <svg viewBox="0 0 420 285" xmlns="http://www.w3.org/2000/svg">
+            <text x="210" y="26" text-anchor="middle" font-family="Noto Serif TC" font-size="13.5" fill="#2A2825" font-weight="600">LightGlue 自適應深度推論（共 9 層）</text>
+            <!-- Layer bars -->
+            <g transform="translate(36, 48)">
+              <!-- Layer blocks -->
+              <rect x="0" y="0" width="32" height="146" fill="#5A705B" fill-opacity="0.85" rx="2"/>
+              <rect x="38" y="8" width="32" height="138" fill="#5A705B" fill-opacity="0.78" rx="2"/>
+              <rect x="76" y="16" width="32" height="130" fill="#5A705B" fill-opacity="0.70" rx="2"/>
+              <rect x="114" y="24" width="32" height="122" fill="#5A705B" fill-opacity="0.62" rx="2"/>
+              <rect x="152" y="34" width="32" height="112" fill="#3A546A" fill-opacity="0.62" rx="2"/>
+              <rect x="190" y="42" width="32" height="104" fill="#3A546A" fill-opacity="0.55" rx="2"/>
+              <rect x="228" y="52" width="32" height="94" fill="#B85A3A" fill-opacity="0.58" rx="2"/>
+              <rect x="266" y="60" width="32" height="86" fill="#B85A3A" fill-opacity="0.48" rx="2"/>
+              <rect x="304" y="68" width="32" height="78" fill="#B85A3A" fill-opacity="0.38" rx="2"/>
+
+              <!-- Layer numbers -->
+              <text x="16" y="164" text-anchor="middle" font-size="10.5" fill="#59544C">L1</text>
+              <text x="54" y="164" text-anchor="middle" font-size="10.5" fill="#59544C">L2</text>
+              <text x="92" y="164" text-anchor="middle" font-size="10.5" fill="#59544C">L3</text>
+              <text x="130" y="164" text-anchor="middle" font-size="10.5" fill="#59544C">L4</text>
+              <text x="168" y="164" text-anchor="middle" font-size="10.5" fill="#59544C">L5</text>
+              <text x="206" y="164" text-anchor="middle" font-size="10.5" fill="#59544C">L6</text>
+              <text x="244" y="164" text-anchor="middle" font-size="10.5" fill="#59544C">L7</text>
+              <text x="282" y="164" text-anchor="middle" font-size="10.5" fill="#59544C">L8</text>
+              <text x="320" y="164" text-anchor="middle" font-size="10.5" fill="#59544C">L9</text>
+
+              <!-- Exit markers -->
+              <line x1="146" y1="-6" x2="146" y2="188" stroke="#5A705B" stroke-width="1.5" stroke-dasharray="3 3"/>
+              <text x="146" y="204" text-anchor="middle" font-size="11" fill="#5A705B" font-weight="600">簡單對 ~4.7層停 (1.86×快)</text>
+
+              <line x1="262" y1="36" x2="262" y2="188" stroke="#B85A3A" stroke-width="1.5" stroke-dasharray="3 3"/>
+              <text x="278" y="220" text-anchor="middle" font-size="11" fill="#B85A3A" font-weight="600">困難對 ~6.9層停</text>
+
+              <!-- Height meaning -->
+              <text x="338" y="18" text-anchor="end" font-size="10.5" fill="#8A8378">柱高遞減 = 逐層剪除不可匹配點</text>
+            </g>
+          </svg>
+          <div class="visual-caption">圖 3：隨層數遞進剪除雜訊點（寬度自適應）並依難度提早結束（深度自適應）</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== SLIDE 06 ==================== -->
+    <section class="slide" data-title="拼圖三：MG-MOT 3D 世界座標投影" data-wiki="[[Yang2024-SeaYouLater]] · [[MG-MOT]]">
+      <div class="slide-top">
+        <div class="kicker"><span class="seal">伍</span> 拼圖三｜跳出 2D，進入 3D 世界座標</div>
+        <span class="wiki-ref">Wiki: [[Yang2024-SeaYouLater]] · [[MG-MOT]] · [[SeaDronesSee]]</span>
+      </div>
+      <h2>外觀長得都一樣？改用無人機 GPS 投到世界地圖</h2>
+      <div class="grid-2">
+        <div>
+          <div class="analogy">
+            <strong>生活類比：</strong>海面上的泳客從高空看全是小白點、認不出長相；不如直接記下「他剛才在東經幾度、北緯幾度」，鏡頭轉回來就找得到。
+          </div>
+          <ul class="clean-list">
+            <li><strong>UAV 元資料 3D 投影</strong>：利用逐幀 GPS、航高與雲台姿態，將 2D 偵測射線與海平面求交得世界座標。</li>
+            <li><strong>長時程重辨識（BiME + MTE）</strong>：目標離開視野再重現時，做雙向速度外插並隨消失時間放寬配對門檻。</li>
+          </ul>
+          <div class="stat-row">
+            <div class="stat-box"><div class="stat-num indigo">第 1 名</div><div class="stat-label">2024 MaCVi SeaDronesSee</div></div>
+            <div class="stat-box"><div class="stat-num">85.9%</div><div class="stat-label">IDF1 (Long Re-ID +17.2%)</div></div>
+            <div class="stat-box"><div class="stat-num matcha">18 次</div><div class="stat-label">全場 IDs (基線 84 次)</div></div>
+          </div>
+          <div class="footnote-box warn">
+            <strong>關鍵轉折：</strong>作者揭露真實測試集曾出現「雲台俯仰角報 90° 卻實傾 45°」的元資料異常——<strong>不估計定位誤差，直接算歐氏距離就會被假位移騙倒！</strong>
+          </div>
+        </div>
+        <div class="art-frame" style="height: 100%; display: flex; flex-direction: column; justify-content: center;">
+          <img src="assets/section-world-map.jpg" alt="無人機射線投影至海面世界座標插畫" style="max-height: 350px; object-fit: contain;" />
+          <div class="visual-caption">圖 4：UAV 感測器元資料將 2D 畫面射線投射至 3D 世界座標平面</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== SLIDE 07 ==================== -->
+    <section class="slide" data-title="拼圖四：UCMCTrack 旋轉誤差橢圓" data-wiki="[[Yi2024-UCMCTrack]] · [[UCMCTrack]]">
+      <div class="slide-top">
+        <div class="kicker"><span class="seal">陸</span> 拼圖四｜投影協方差與馬氏距離</div>
+        <span class="wiki-ref">Wiki: [[Yi2024-UCMCTrack]] · [[UCMCTrack]] · [[Camera-Motion-Compensation]]</span>
+      </div>
+      <h2>把誤差畫出來：從固定圓圈到「旋轉誤差橢圓」</h2>
+      <div class="analogy">
+        <strong>生活類比：</strong>斜著看遠方路面時，前後距離的定位誤差會被拉長成「斜斜的橢圓」，絕不是正圓形；改用橢圓尺規（馬氏距離）量距離才準。
+      </div>
+      <div class="grid-2-wide-right">
+        <div>
+          <ul class="clean-list">
+            <li><strong>相關量測分布（CMD）</strong>：用單應性 Jacobian 把影像雜訊傳播到地面（<b>R</b><sub>k</sub> = <b>C</b><b>R</b><sub>k</sub><sup>uv</sup><b>C</b><sup>T</sup>），形成具方向性的旋轉誤差橢圓。</li>
+            <li><strong>統一補償（UCMC）＋映射馬氏距離（MMD）</strong>：免去昂貴的逐幀影像配準，就算畫面晃到 <code>IoU = 0</code> 仍能精準關聯。</li>
+          </ul>
+          <div class="stat-row">
+            <div class="stat-box"><div class="stat-num">&gt;1000</div><div class="stat-label">單核 CPU FPS</div></div>
+            <div class="stat-box"><div class="stat-num indigo">+5.5</div><div class="stat-label">DanceTrack AssA 提升</div></div>
+          </div>
+          <div class="footnote-box">
+            <strong>關鍵實證：</strong>KITTI 低幀率（10 FPS）劇烈相機運動下，不加逐幀 CMC（77.1）反勝加 CMC（74.2）——大基線時 2D 配準反而有害。
+          </div>
+        </div>
+        <div class="visual-card">
+          <svg viewBox="0 0 480 250" xmlns="http://www.w3.org/2000/svg">
+            <!-- Panel A -->
+            <g transform="translate(8, 12)">
+              <rect width="146" height="222" fill="#F6F2EA" stroke="#2A2825" stroke-opacity="0.18" rx="3"/>
+              <text x="73" y="24" text-anchor="middle" font-size="11.5" fill="#59544C" font-weight="600">(a) 影像 IoU = 0</text>
+              <rect x="22" y="64" width="38" height="46" fill="rgba(58,84,106,0.15)" stroke="#3A546A" stroke-dasharray="3 2"/>
+              <rect x="86" y="106" width="38" height="46" fill="rgba(184,90,58,0.15)" stroke="#B85A3A"/>
+              <text x="73" y="182" text-anchor="middle" font-size="11" fill="#B85A3A">無重疊 → 關聯失敗</text>
+            </g>
+            <!-- Panel B -->
+            <g transform="translate(166, 12)">
+              <rect width="146" height="222" fill="#F6F2EA" stroke="#2A2825" stroke-opacity="0.18" rx="3"/>
+              <text x="73" y="24" text-anchor="middle" font-size="11.5" fill="#59544C" font-weight="600">(b) 固定圓形門檻</text>
+              <circle cx="72" cy="112" r="44" fill="rgba(184,90,58,0.09)" stroke="#B85A3A" stroke-dasharray="4 3"/>
+              <circle cx="72" cy="112" r="4.5" fill="#3A546A"/>
+              <circle cx="95" cy="96" r="4.5" fill="#B85A3A"/>
+              <circle cx="52" cy="138" r="4.5" fill="#5A705B"/>
+              <text x="73" y="182" text-anchor="middle" font-size="11" fill="#B85A3A">忽略方向 → 易誤配鄰車</text>
+            </g>
+            <!-- Panel C -->
+            <g transform="translate(324, 12)">
+              <rect width="148" height="222" fill="#F6F2EA" stroke="#5A705B" stroke-width="1.5" rx="3"/>
+              <text x="74" y="24" text-anchor="middle" font-size="11.5" fill="#5A705B" font-weight="600">(c) CMD 旋轉誤差橢圓</text>
+              <g transform="translate(74, 112) rotate(-32)">
+                <ellipse cx="0" cy="0" rx="54" ry="18" fill="rgba(90,112,91,0.16)" stroke="#5A705B" stroke-width="1.6"/>
+              </g>
+              <circle cx="74" cy="112" r="4.5" fill="#3A546A"/>
+              <circle cx="102" cy="94" r="4.5" fill="#5A705B"/>
+              <circle cx="54" cy="138" r="4.5" fill="#B85A3A"/>
+              <text x="74" y="182" text-anchor="middle" font-size="11" fill="#5A705B" font-weight="600">沿透視拉長 → 精準配對</text>
+            </g>
+          </svg>
+          <div class="visual-caption">圖 5：為何「旋轉誤差橢圓（CMD + MMD）」能在大位移下遠勝 IoU 與固定圓形門檻</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== SLIDE 08 ==================== -->
+    <section class="slide" data-title="拼圖五：MoD2T 相對地面動靜判斷" data-wiki="[[Liao2024-MoD2T]] · [[MoD2T]]">
+      <div class="slide-top">
+        <div class="kicker"><span class="seal">柒</span> 拼圖五｜它到底有沒有在動？</div>
+        <span class="wiki-ref">Wiki: [[Liao2024-MoD2T]] · [[MoD2T]] · [[Motion-State-Benchmark]]</span>
+      </div>
+      <h2>動靜判斷的現實考驗：相機一快就崩潰</h2>
+      <div class="grid-2">
+        <div>
+          <div class="analogy">
+            <strong>生活類比：</strong>判斷一台車有沒有在動，看兩件事——「車身自己有沒有移位」加上「它身旁的地板背景有沒有換掉」。
+          </div>
+          <ul class="clean-list">
+            <li><strong>MoD2T 雙分支融合</strong>：結合 ECC 補償位移、OSNet 周圍背景相似度，以及傳統高斯背景減除，提出專屬評測指標 <strong>MVF1</strong>。</li>
+            <li><strong>驚人的效能斷層</strong>：在平緩空拍（UAVDT）非常準確，但相機一快速移動，2D 補償無法消除 3D 視差，動靜辨識率立刻雪崩。</li>
+          </ul>
+          <div class="footnote-box warn">
+            <strong>揭示缺口：</strong>MoD2T 只做二元分類（移動／靜止）、不量化定位不確定性，也不將動靜狀態回饋給追蹤 ID 關聯。
+          </div>
+        </div>
+        <div class="visual-card">
+          <svg viewBox="0 0 430 275" xmlns="http://www.w3.org/2000/svg">
+            <text x="215" y="26" text-anchor="middle" font-family="Noto Serif TC" font-size="13.5" fill="#2A2825" font-weight="600">MoD2T 動靜判斷表現（MVF1 分數，滿分 1.0）</text>
+            <!-- Grid lines -->
+            <line x1="60" y1="215" x2="395" y2="215" stroke="#2A2825" stroke-width="1.2"/>
+            <line x1="60" y1="140" x2="395" y2="140" stroke="#2A2825" stroke-opacity="0.12" stroke-dasharray="3 3"/>
+            <line x1="60" y1="65" x2="395" y2="65" stroke="#2A2825" stroke-opacity="0.12" stroke-dasharray="3 3"/>
+            <text x="50" y="219" text-anchor="end" font-size="10.5" fill="#8A8378">0.0</text>
+            <text x="50" y="144" text-anchor="end" font-size="10.5" fill="#8A8378">0.5</text>
+            <text x="50" y="69" text-anchor="end" font-size="10.5" fill="#8A8378">1.0</text>
+
+            <!-- Bar 1: UAVDT -->
+            <rect x="86" y="91" width="66" height="124" fill="#5A705B" rx="2"/>
+            <text x="119" y="82" text-anchor="middle" font-family="Noto Serif TC" font-size="14" fill="#5A705B" font-weight="700">0.827</text>
+            <text x="119" y="235" text-anchor="middle" font-size="11.5" fill="#2A2825" font-weight="600">UAVDT</text>
+            <text x="119" y="252" text-anchor="middle" font-size="10.5" fill="#8A8378">慢速平穩空拍</text>
+
+            <!-- Bar 2: KITTI Slow -->
+            <rect x="192" y="99" width="66" height="116" fill="#3A546A" rx="2"/>
+            <text x="225" y="90" text-anchor="middle" font-family="Noto Serif TC" font-size="14" fill="#3A546A" font-weight="700">0.775</text>
+            <text x="225" y="235" text-anchor="middle" font-size="11.5" fill="#2A2825" font-weight="600">KITTI 慢速</text>
+            <text x="225" y="252" text-anchor="middle" font-size="10.5" fill="#8A8378">靜止／低速相機</text>
+
+            <!-- Bar 3: KITTI Fast -->
+            <rect x="298" y="180" width="66" height="35" fill="#B85A3A" rx="2"/>
+            <text x="331" y="170" text-anchor="middle" font-family="Noto Serif TC" font-size="14" fill="#B85A3A" font-weight="700">0.230</text>
+            <text x="331" y="235" text-anchor="middle" font-size="11.5" fill="#B85A3A" font-weight="600">KITTI 快速</text>
+            <text x="331" y="252" text-anchor="middle" font-size="10.5" fill="#B85A3A">2D 補償失效！</text>
+
+            <!-- Drop arrow -->
+            <defs><marker id="arrowV8" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#B85A3A"/></marker></defs>
+            <path d="M 264 115 Q 296 125 320 156" fill="none" stroke="#B85A3A" stroke-width="1.5" stroke-dasharray="3 2" marker-end="url(#arrowV8)"/>
+          </svg>
+          <div class="visual-caption">圖 6：依賴 2D ECC 與背景建模在相機劇烈移動下出現嚴重效能斷崖</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== SLIDE 09 ==================== -->
+    <section class="slide" data-title="跨論文總對照與核心研究缺口" data-wiki="[[UAV-Tracking-Geolocation-Synthesis]]">
+      <div class="slide-top">
+        <div class="kicker"><span class="seal">捌</span> 跨論文綜合比較｜SYNTHESIS &amp; RESEARCH GAP</div>
+        <span class="wiki-ref">Wiki: [[UAV-Tracking-Geolocation-Synthesis]]</span>
+      </div>
+      <h2>五塊拼圖總對照：既有方法還缺了什麼？</h2>
+      <div class="slide-body" style="justify-content: space-between;">
+        <table class="zen-table">
+          <thead>
+            <tr>
+              <th style="width: 19%;">論文 / 方法</th>
+              <th style="width: 15%;">座標空間</th>
+              <th style="width: 31%;">最大強項與代表成績</th>
+              <th style="width: 35%;">面對「間隔航測」的缺口</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>AMOT</strong> (2026)</td>
+              <td><span class="pill pill-i">2D 影像</span></td>
+              <td>外觀雙向互驗，VisDrone IDs 砍 <strong>72.4%</strong>（36.4 FPS）</td>
+              <td>無法區分視差與真實移動；稀疏間隔下易誤鎖相似車</td>
+            </tr>
+            <tr>
+              <td><strong>LightGlue</strong> (2023)</td>
+              <td><span class="pill pill-m">2D 局部幾何</span></td>
+              <td>保留關鍵點空間分布，比 SuperGlue 快 <strong>2.2×</strong></td>
+              <td>靜態場景訓練；追蹤移動小目標須配合 ROI 與剛體檢驗</td>
+            </tr>
+            <tr>
+              <td><strong>MG-MOT</strong> (2024)</td>
+              <td><span class="pill pill-i">3D 海面世界</span></td>
+              <td>UAV 元資料投影，長時程 Re-ID <strong>+17.2% IDF1</strong></td>
+              <td>假設平坦海面、無誤差協方差；元資料異常即生假位移</td>
+            </tr>
+            <tr>
+              <td><strong>UCMCTrack</strong> (2024)</td>
+              <td><span class="pill pill-v">2D 地面平面</span></td>
+              <td>旋轉誤差橢圓＋馬氏距離，單核 CPU <strong>&gt;1000 FPS</strong></td>
+              <td>假設平坦地面、僅單次獨立誤差傳播（未校準跨曝光 <i>C</i><sub>ij</sub>）</td>
+            </tr>
+            <tr>
+              <td><strong>MoD2T</strong> (2024)</td>
+              <td><span class="pill pill-i">2D 影像</span></td>
+              <td>位移＋背景雙線索，UAVDT 動靜 <strong>MVF1 0.827</strong></td>
+              <td>快速相機驟降至 <strong>0.230</strong>；缺「未確定」態與啟停回饋</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="analogy" style="margin-bottom: 0; margin-top: 14px;">
+          <strong>核心研究缺口：</strong>將<strong>經校準的跨照片定位誤差</strong>轉為動靜與啟停證據，再讓這項證據改善<strong>具有發布時限的近即時追蹤決策</strong>。
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== SLIDE 10 ==================== -->
+    <section class="slide" data-title="核心突破一：經校準的跨照片位移誤差模型" data-wiki="[[Geolocation-Uncertainty]]">
+      <div class="slide-top">
+        <div class="kicker"><span class="seal">玖</span> 核心突破一｜ADAPTIVE DISPLACEMENT ERROR MODEL</div>
+        <span class="wiki-ref">Wiki: [[Geolocation-Uncertainty]] · [[UAV-Tracking-Geolocation-Synthesis]]</span>
+      </div>
+      <h2>經校準的「跨照片位移誤差模型」</h2>
+      <div class="grid-2">
+        <div>
+          <div class="analogy">
+            <strong>生活類比：</strong>如果兩張照片的 GPS 都往右偏了 1 公尺，相減時共同偏差會互相抵消；真正製造「假位移」的是隨視角改變的相對誤差。
+          </div>
+          <div class="formula-box">S<sub>ij</sub> = Σ<sub>i</sub> + Σ<sub>j</sub> − C<sub>ij</sub> − C<sub>ij</sub><sup>T</sup></div>
+          <ul class="clean-list">
+            <li><strong>引入 DSM 地形模型</strong>：取代 UCMCTrack / MG-MOT 的平坦地面假設，考量相機姿態與物件參考點高度。</li>
+            <li><strong>用「固定地物」校準假位移</strong>：真實位移必為零的固定參考物，用來校準跨照片偏差與交叉協方差 <i>C</i><sub>ij</sub>，確保容許區域具真實涵蓋率。</li>
+          </ul>
+        </div>
+        <div class="visual-card">
+          <svg viewBox="0 0 430 275" xmlns="http://www.w3.org/2000/svg">
+            <text x="215" y="24" text-anchor="middle" font-family="Noto Serif TC" font-size="13" fill="#2A2825" font-weight="600">單次誤差獨立假設 vs. 跨照片校準模型</text>
+            <!-- Top: Independent assumption (too big) -->
+            <rect x="20" y="42" width="390" height="98" rx="3" fill="#F6F2EA" stroke="#2A2825" stroke-opacity="0.16"/>
+            <text x="36" y="64" font-size="12" fill="#8A8378" font-weight="600">若假設獨立（Σi + Σj）：容許範圍過大 → 漏判低速移動</text>
+            <ellipse cx="145" cy="104" rx="84" ry="26" fill="rgba(184,90,58,0.10)" stroke="#B85A3A" stroke-dasharray="4 3"/>
+            <circle cx="145" cy="104" r="4" fill="#3A546A"/>
+            <circle cx="204" cy="104" r="4.5" fill="#B85A3A"/>
+            <text x="275" y="108" font-size="11.5" fill="#B85A3A">低速真實移動被包進誤差圈</text>
+
+            <!-- Bottom: Calibrated model -->
+            <rect x="20" y="156" width="390" height="104" rx="3" fill="#F6F2EA" stroke="#5A705B" stroke-width="1.5"/>
+            <text x="36" y="178" font-size="12" fill="#5A705B" font-weight="600">扣除共同偏差與相關性（S_ij）：校準後的精準容許橢圓</text>
+            <g transform="translate(145, 220) rotate(-14)">
+              <ellipse cx="0" cy="0" rx="40" ry="16" fill="rgba(90,112,91,0.18)" stroke="#5A705B" stroke-width="1.6"/>
+            </g>
+            <circle cx="145" cy="220" r="4" fill="#3A546A"/>
+            <circle cx="204" cy="220" r="4.5" fill="#5A705B"/>
+            <line x1="149" y1="220" x2="198" y2="220" stroke="#5A705B" stroke-width="1.5"/>
+            <text x="275" y="216" font-size="11.5" fill="#5A705B" font-weight="600">靜止不誤報</text>
+            <text x="275" y="234" font-size="11.5" fill="#5A705B" font-weight="600">低速移動清楚跳出！</text>
+          </svg>
+          <div class="visual-caption">圖 7：分開處理系統偏差與跨照片誤差相關性，同時守住低誤報率與低速辨識力</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== SLIDE 11 ==================== -->
+    <section class="slide" data-title="核心突破二：三態動靜推論與啟停循環" data-wiki="[[Motion-State-Estimation]]">
+      <div class="slide-top">
+        <div class="kicker"><span class="seal">拾</span> 核心突破二｜MOTION STATE &amp; START-STOP FEEDBACK</div>
+        <span class="wiki-ref">Wiki: [[Motion-State-Estimation]] · [[Geolocation-Uncertainty]]</span>
+      </div>
+      <h2>三態動靜推論：「未能證明移動 ≠ 已證明靜止」</h2>
+      <div class="grid-2">
+        <div>
+          <ul class="clean-list">
+            <li><strong>支持移動</strong>：位移的不確定範圍，與「可忽略運動範圍」明確分離。</li>
+            <li><strong>支持近似靜止</strong>：不確定範圍夠小，且完全落在可忽略運動範圍內。</li>
+            <li><strong>未確定（誠實保留）</strong>：兩範圍重疊或定位品質不足，不強行貼標籤。</li>
+            <li><strong>啟停回饋關聯</strong>：移動 → 疑似停止 → 確認近似靜止（<strong>保留原 ID</strong>）→ 疑似再啟動，避免停等紅燈後斷軌換 ID。</li>
+          </ul>
+          <div class="footnote-box">
+            <strong>關鍵原則：</strong>靜止容許區域只用來檢驗「靜止假設」，絕不拿來刪除正在移動物件的候選關聯！
+          </div>
+        </div>
+        <div class="visual-card">
+          <svg viewBox="0 0 430 275" xmlns="http://www.w3.org/2000/svg">
+            <text x="215" y="22" text-anchor="middle" font-family="Noto Serif TC" font-size="12.5" fill="#2A2825" font-weight="600">誤差範圍 vs. 可忽略運動範圍（三態判別）</text>
+            <!-- Negligible zone -->
+            <rect x="44" y="36" width="110" height="118" fill="rgba(58,84,106,0.10)" stroke="#3A546A" stroke-dasharray="3 3"/>
+            <text x="99" y="52" text-anchor="middle" font-size="10.5" fill="#3A546A" font-weight="600">可忽略運動範圍</text>
+
+            <!-- Case 1: Stationary -->
+            <line x1="60" y1="78" x2="124" y2="78" stroke="#5A705B" stroke-width="5" stroke-linecap="round"/>
+            <circle cx="92" cy="78" r="4" fill="#2A2825"/>
+            <text x="170" y="82" font-size="11.5" fill="#5A705B" font-weight="600">① 支持近似靜止（完全落入）</text>
+
+            <!-- Case 2: Uncertain -->
+            <line x1="112" y1="108" x2="212" y2="108" stroke="#8A8378" stroke-width="5" stroke-linecap="round"/>
+            <circle cx="162" cy="108" r="4" fill="#2A2825"/>
+            <text x="226" y="112" font-size="11.5" fill="#59544C" font-weight="600">② 未確定（重疊）</text>
+
+            <!-- Case 3: Moving -->
+            <line x1="205" y1="138" x2="275" y2="138" stroke="#B85A3A" stroke-width="5" stroke-linecap="round"/>
+            <circle cx="240" cy="138" r="4" fill="#2A2825"/>
+            <text x="288" y="142" font-size="11.5" fill="#B85A3A" font-weight="600">③ 支持移動（分離）</text>
+
+            <!-- Divider -->
+            <line x1="24" y1="170" x2="406" y2="170" stroke="#2A2825" stroke-opacity="0.16"/>
+            <text x="215" y="190" text-anchor="middle" font-family="Noto Serif TC" font-size="12" fill="#2A2825" font-weight="600">啟停狀態循環（全程保留同一 Track ID）</text>
+
+            <!-- State boxes -->
+            <rect x="22" y="206" width="84" height="34" rx="3" fill="rgba(184,90,58,0.14)" stroke="#B85A3A"/>
+            <text x="64" y="227" text-anchor="middle" font-size="11.5" fill="#B85A3A" font-weight="600">移動中</text>
+
+            <rect x="130" y="206" width="84" height="34" rx="3" fill="#F6F2EA" stroke="#8A8378"/>
+            <text x="172" y="227" text-anchor="middle" font-size="11.5" fill="#59544C">疑似停止</text>
+
+            <rect x="238" y="206" width="84" height="34" rx="3" fill="rgba(90,112,91,0.16)" stroke="#5A705B"/>
+            <text x="280" y="227" text-anchor="middle" font-size="11.5" fill="#5A705B" font-weight="600">確認靜止</text>
+
+            <rect x="342" y="206" width="76" height="34" rx="3" fill="#F6F2EA" stroke="#3A546A"/>
+            <text x="380" y="227" text-anchor="middle" font-size="11" fill="#3A546A">疑似再啟動</text>
+
+            <line x1="106" y1="223" x2="128" y2="223" stroke="#59544C" stroke-width="1.3"/>
+            <line x1="214" y1="223" x2="236" y2="223" stroke="#59544C" stroke-width="1.3"/>
+            <line x1="322" y1="223" x2="340" y2="223" stroke="#59544C" stroke-width="1.3"/>
+            <path d="M 380 240 Q 220 268 64 242" fill="none" stroke="#3A546A" stroke-width="1.3" stroke-dasharray="3 2"/>
+          </svg>
+          <div class="visual-caption">圖 8：三態區間判別與停止再啟動 ID 保持機制</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== SLIDE 12 ==================== -->
+    <section class="slide" data-title="核心突破三：觀測機會與有限延遲確認" data-wiki="[[UAV-Tracking-Geolocation-Synthesis]]">
+      <div class="slide-top">
+        <div class="kicker"><span class="seal">拾一</span> 核心突破三｜OBSERVATION OPPORTUNITY &amp; NEAR-REAL-TIME</div>
+        <span class="wiki-ref">Wiki: [[UAV-Tracking-Geolocation-Synthesis]] · Master-Research-Proposal</span>
+      </div>
+      <h2>觀測機會與「有限延遲」近即時確認</h2>
+      <div class="grid-2">
+        <div>
+          <div class="analogy">
+            <strong>生活類比：</strong>與其死板規定「每筆都要多等 3 張照片才發布」，不如先看「下一張航拍到底還拍不拍得到這台車」。
+          </div>
+          <ul class="clean-list">
+            <li><strong>沒拍到 ≠ 物件消失</strong>：候選位置不在照片涵蓋範圍內時，缺測不算否定證據；條件良好卻持續缺測才降低可信度。</li>
+            <li><strong>證據驅動的彈性等待</strong>：結合航線預期曝光位置評估新增觀測的辨識價值，並設定時間上限防無限等待。</li>
+            <li><strong>忠實輸出成果</strong>：速度向量 <i>v̄</i><sub>ij</sub> = (<i>p̂</i><sub>j</sub> − <i>p̂</i><sub>i</sub>) / (<i>t</i><sub>j</sub> − <i>t</i><sub>i</sub>) 附帶協方差 Σ<sub>v̄</sub> = <i>S</i><sub>ij</sub> / (<i>t</i><sub>j</sub> − <i>t</i><sub>i</sub>)<sup>2</sup>，不可靠時主動標示。</li>
+          </ul>
+        </div>
+        <div class="visual-card">
+          <svg viewBox="0 0 430 275" xmlns="http://www.w3.org/2000/svg">
+            <text x="215" y="24" text-anchor="middle" font-family="Noto Serif TC" font-size="13" fill="#2A2825" font-weight="600">有限延遲內的三路近即時確認策略</text>
+            <!-- Start -->
+            <rect x="135" y="42" width="160" height="36" rx="3" fill="#3A546A"/>
+            <text x="215" y="64" text-anchor="middle" font-size="12" fill="#F6F2EA" font-weight="600">新照片回傳與關聯評估</text>
+
+            <!-- Branches -->
+            <line x1="215" y1="78" x2="215" y2="104" stroke="#2A2825" stroke-width="1.4"/>
+            <line x1="72" y1="104" x2="358" y2="104" stroke="#2A2825" stroke-width="1.4"/>
+            <line x1="72" y1="104" x2="72" y2="128" stroke="#5A705B" stroke-width="1.6"/>
+            <line x1="215" y1="104" x2="215" y2="128" stroke="#3A546A" stroke-width="1.6"/>
+            <line x1="358" y1="104" x2="358" y2="128" stroke="#B85A3A" stroke-width="1.6"/>
+
+            <!-- Card 1 -->
+            <rect x="14" y="128" width="118" height="122" rx="3" fill="rgba(90,112,91,0.12)" stroke="#5A705B"/>
+            <text x="73" y="152" text-anchor="middle" font-family="Noto Serif TC" font-size="13" fill="#5A705B" font-weight="700">提早確認</text>
+            <text x="73" y="176" text-anchor="middle" font-size="11" fill="#59544C">位移與特徵證據</text>
+            <text x="73" y="194" text-anchor="middle" font-size="11" fill="#59544C">已足夠充分</text>
+            <text x="73" y="226" text-anchor="middle" font-size="11" fill="#5A705B" font-weight="600">→ 立刻低延遲發布</text>
+
+            <!-- Card 2 -->
+            <rect x="156" y="128" width="118" height="122" rx="3" fill="rgba(58,84,106,0.10)" stroke="#3A546A"/>
+            <text x="215" y="152" text-anchor="middle" font-family="Noto Serif TC" font-size="13" fill="#3A546A" font-weight="700">短暫等待</text>
+            <text x="215" y="176" text-anchor="middle" font-size="11" fill="#59544C">尚有歧義，且期限</text>
+            <text x="215" y="194" text-anchor="middle" font-size="11" fill="#59544C">內具新觀測機會</text>
+            <text x="215" y="226" text-anchor="middle" font-size="11" fill="#3A546A" font-weight="600">→ 等補充證據修正</text>
+
+            <!-- Card 3 -->
+            <rect x="298" y="128" width="118" height="122" rx="3" fill="rgba(184,90,58,0.11)" stroke="#B85A3A"/>
+            <text x="357" y="152" text-anchor="middle" font-family="Noto Serif TC" font-size="13" fill="#B85A3A" font-weight="700">發布未確定</text>
+            <text x="357" y="176" text-anchor="middle" font-size="11" fill="#59544C">不再有觀測機會</text>
+            <text x="357" y="194" text-anchor="middle" font-size="11" fill="#59544C">或已達時間上限</text>
+            <text x="357" y="226" text-anchor="middle" font-size="11" fill="#B85A3A" font-weight="600">→ 誠實標示可信度</text>
+          </svg>
+          <div class="visual-caption">圖 9：以觀測機會與時間上限平衡「追蹤準確度」與「端到端發布延遲」</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== SLIDE 13 ==================== -->
+    <section class="slide" data-title="總結與學習帶走（Wiki 來源索引）" data-wiki="全部 5 篇 wiki/papers/">
+      <div class="slide-top">
+        <div class="kicker"><span class="seal">結</span> 總結與知識來源｜TAKEAWAYS &amp; SOURCES</div>
+        <span class="wiki-ref">Wiki: 5 Papers · 20 Knowledge Pages</span>
+      </div>
+      <h2>帶走這三個核心觀念</h2>
+      <div class="grid-2" style="align-items: stretch;">
+        <div style="display: flex; flex-direction: column; justify-content: space-between;">
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div class="zen-card">
+              <div class="card-num">TAKEAWAY 01｜空間升級</div>
+              <p><strong>跳出 2D 進入 3D 世界座標</strong>：間隔航測視角跳變大，結合局部幾何（LightGlue）與 UAV 直接定位＋DSM 才能穩住跨照片關聯。</p>
+            </div>
+            <div class="zen-card">
+              <div class="card-num">TAKEAWAY 02｜誤差校準</div>
+              <p><strong>承認並校準定位不確定性</strong>：用旋轉誤差橢圓與固定地物校準 <i>S</i><sub>ij</sub>，把「定位漂移」從「真實移動」中剝離。</p>
+            </div>
+            <div class="zen-card">
+              <div class="card-num">TAKEAWAY 03｜決策回饋</div>
+              <p><strong>不確定性回饋近即時追蹤</strong>：以三態動靜推論與觀測機會控制有限延遲，兼顧啟停 ID 延續與發布時效。</p>
+            </div>
+          </div>
+          <div style="font-size: 11.5px; color: var(--ink-muted); line-height: 1.6; margin-top: 8px;">
+            <strong>Wiki 論文來源：</strong>[1] Yang et al. 2024 (arXiv:2311.03561) · [2] Yi et al. 2024 (arXiv:2312.08952) · [3] Liao et al. 2024 (arXiv:2312.17641) · [4] Ma et al. 2026 (arXiv:2508.01730) · [5] Lindenberger et al. 2023 (arXiv:2306.13643)
+          </div>
+        </div>
+        <div class="art-frame" style="display: flex; flex-direction: column; justify-content: center;">
+          <img src="assets/closing-washi.jpg" alt="日式水彩靜謐山巒與無人機收尾插畫" style="width: 100%; height: 100%; max-height: 350px; object-fit: cover;" />
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== SLIDE 14 ==================== -->
+    <section class="slide" data-title="附錄：本簡報的 LLM Wiki 與 Graph 製作流程" data-wiki="AGENTS.md · index.md · log.md">
+      <div class="slide-top">
+        <div class="kicker"><span class="seal">錄</span> 附錄｜LLM WIKI + GRAPH 工作流設計</div>
+        <span class="wiki-ref">Schema: AGENTS.md · wiki/log.md</span>
+      </div>
+      <h2>本簡報如何從 LLM Wiki 透過 Graph 檢查迴圈產出？</h2>
+      <div class="slide-body" style="justify-content: space-between;">
+        <div class="visual-card" style="padding: 16px 14px; height: auto;">
+          <svg viewBox="0 0 960 220" xmlns="http://www.w3.org/2000/svg">
+            <!-- Phase A box -->
+            <rect x="10" y="14" width="290" height="192" rx="3" fill="#F6F2EA" stroke="#3A546A" stroke-width="1.4"/>
+            <text x="155" y="36" text-anchor="middle" font-family="Noto Serif TC" font-size="12.5" fill="#3A546A" font-weight="700">Phase A：LLM Wiki 知識累積層</text>
+            <rect x="28" y="52" width="254" height="32" rx="2" fill="#FCF9F4" stroke="#3A546A" stroke-opacity="0.4"/>
+            <text x="155" y="72" text-anchor="middle" font-size="11.5" fill="#2A2825">1. 先討論定案 AGENTS.md 運作規範</text>
+            <rect x="28" y="96" width="254" height="32" rx="2" fill="#FCF9F4" stroke="#3A546A" stroke-opacity="0.4"/>
+            <text x="155" y="116" text-anchor="middle" font-size="11.5" fill="#2A2825">2. 5 篇 arXiv PDF → 22 頁串聯 Wiki</text>
+            <rect x="28" y="140" width="254" height="44" rx="2" fill="rgba(90,112,91,0.14)" stroke="#5A705B"/>
+            <text x="155" y="159" text-anchor="middle" font-size="11.5" fill="#5A705B" font-weight="600">3. 自動化 Lint 健康檢查</text>
+            <text x="155" y="176" text-anchor="middle" font-size="10.5" fill="#59544C">斷裂連結 0 · 孤立頁 0 · 標註跨論文衝突</text>
+
+            <!-- Arrow A to B -->
+            <defs><marker id="arrowI14" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#3A546A"/></marker></defs>
+            <line x1="300" y1="110" x2="328" y2="110" stroke="#2A2825" stroke-width="1.6" marker-end="url(#arrowI14)"/>
+
+            <!-- Phase B box -->
+            <rect x="330" y="14" width="620" height="192" rx="3" fill="#F6F2EA" stroke="#B85A3A" stroke-width="1.5"/>
+            <text x="640" y="36" text-anchor="middle" font-family="Noto Serif TC" font-size="12.5" fill="#B85A3A" font-weight="700">Phase B：教學簡報生成 Graph（Shift-Left 檢查前移）</text>
+
+            <!-- Graph Nodes -->
+            <rect x="348" y="66" width="84" height="44" rx="2" fill="#FCF9F4" stroke="#2A2825" stroke-opacity="0.4"/>
+            <text x="390" y="85" text-anchor="middle" font-size="11" fill="#2A2825" font-weight="600">N0 → N1</text>
+            <text x="390" y="101" text-anchor="middle" font-size="10" fill="#59544C">取材與大綱</text>
+
+            <polygon points="468,62 500,88 468,114 436,88" fill="rgba(184,90,58,0.15)" stroke="#B85A3A" stroke-width="1.4"/>
+            <text x="468" y="92" text-anchor="middle" font-size="11" fill="#B85A3A" font-weight="700">G1</text>
+
+            <rect x="518" y="66" width="88" height="44" rx="2" fill="#FCF9F4" stroke="#2A2825" stroke-opacity="0.4"/>
+            <text x="562" y="85" text-anchor="middle" font-size="11" fill="#2A2825" font-weight="600">N2 腳本</text>
+            <text x="562" y="101" text-anchor="middle" font-size="10" fill="#59544C">文案＋來源</text>
+
+            <polygon points="642,62 674,88 642,114 610,88" fill="rgba(184,90,58,0.15)" stroke="#B85A3A" stroke-width="1.4"/>
+            <text x="642" y="92" text-anchor="middle" font-size="11" fill="#B85A3A" font-weight="700">G2</text>
+
+            <rect x="692" y="66" width="88" height="44" rx="2" fill="#FCF9F4" stroke="#2A2825" stroke-opacity="0.4"/>
+            <text x="736" y="85" text-anchor="middle" font-size="11" fill="#2A2825" font-weight="600">N3 → N4</text>
+            <text x="736" y="101" text-anchor="middle" font-size="10" fill="#59544C">素材與HTML</text>
+
+            <polygon points="816,62 848,88 816,114 784,88" fill="rgba(184,90,58,0.15)" stroke="#B85A3A" stroke-width="1.4"/>
+            <text x="816" y="92" text-anchor="middle" font-size="11" fill="#B85A3A" font-weight="700">G3</text>
+
+            <rect x="866" y="66" width="68" height="44" rx="2" fill="#5A705B"/>
+            <text x="900" y="85" text-anchor="middle" font-size="11" fill="#F6F2EA" font-weight="600">N5 交付</text>
+            <text x="900" y="101" text-anchor="middle" font-size="10" fill="#F6F2EA">寫 log.md</text>
+
+            <!-- Connectors -->
+            <line x1="432" y1="88" x2="436" y2="88" stroke="#2A2825" stroke-width="1.3"/>
+            <line x1="500" y1="88" x2="518" y2="88" stroke="#2A2825" stroke-width="1.3"/>
+            <line x1="606" y1="88" x2="610" y2="88" stroke="#2A2825" stroke-width="1.3"/>
+            <line x1="674" y1="88" x2="692" y2="88" stroke="#2A2825" stroke-width="1.3"/>
+            <line x1="780" y1="88" x2="784" y2="88" stroke="#2A2825" stroke-width="1.3"/>
+            <line x1="848" y1="88" x2="866" y2="88" stroke="#2A2825" stroke-width="1.3"/>
+
+            <!-- Feedback Loop Arcs -->
+            <path d="M 468 114 Q 429 148 390 112" fill="none" stroke="#B85A3A" stroke-width="1.2" stroke-dasharray="3 2"/>
+            <path d="M 642 114 Q 602 148 562 112" fill="none" stroke="#B85A3A" stroke-width="1.2" stroke-dasharray="3 2"/>
+            <path d="M 816 114 Q 776 148 736 112" fill="none" stroke="#B85A3A" stroke-width="1.2" stroke-dasharray="3 2"/>
+            <text x="429" y="156" text-anchor="middle" font-size="10" fill="#8F3E23">G1 大綱回修</text>
+            <text x="602" y="156" text-anchor="middle" font-size="10" fill="#8F3E23">G2 補證/精簡</text>
+            <text x="776" y="156" text-anchor="middle" font-size="10" fill="#8F3E23">G3 排版回修</text>
+            <text x="640" y="188" text-anchor="middle" font-size="11" fill="#59544C">知識層（N0–N2）與呈現層（N3–N4）分離，將事實與結構檢查提前至 HTML 生成前</text>
+          </svg>
+        </div>
+        <div class="grid-3" style="margin-top: 12px;">
+          <div class="zen-card" style="padding: 12px 14px;">
+            <div class="card-num">G1｜大綱關卡（人工＋AI）</div>
+            <p style="font-size: 12.5px;">確認零基礎故事線與頁數（新增本頁即為 G1 決策成果）。</p>
+          </div>
+          <div class="zen-card" style="padding: 12px 14px;">
+            <div class="card-num">G2｜事實與密度關卡</div>
+            <p style="font-size: 12.5px;">逐頁回查 <code>wiki/papers/</code> 核實所有數據與來源標註，控制單頁字數。</p>
+          </div>
+          <div class="zen-card" style="padding: 12px 14px;">
+            <div class="card-num">G3｜實機渲染關卡</div>
+            <p style="font-size: 12.5px;">檢查 16:9 視窗無溢位、插畫與 SVG 正常顯示、切換互動順暢。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<!-- Bottom Navigation Bar -->
+<div class="nav-bar">
+  <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+  <div class="nav-left">
+    <span class="nav-title" id="navTitle">封面：從高空看懂誰在動</span>
+    <span style="opacity:0.45;">|</span>
+    <span>鍵盤 ← → 切換 · 按 G 檢視全頁總覽</span>
+  </div>
+  <div class="nav-controls">
+    <button class="nav-btn" id="btnOverview" type="button">總覽 (G)</button>
+    <button class="nav-btn" id="btnPrev" type="button">← 上一頁</button>
+    <span class="nav-counter" id="navCounter">01 / 14</span>
+    <button class="nav-btn" id="btnNext" type="button">下一頁 →</button>
+  </div>
+</div>
+
+<!-- Overview Modal -->
+<div class="overview-overlay" id="overviewOverlay" aria-hidden="true">
+  <div class="overview-panel">
+    <div class="overview-header">
+      <div>
+        <h3 style="font-size: 18px; margin-bottom: 2px;">全簡報總覽（14 頁）</h3>
+        <p style="font-size: 12px; color: var(--ink-muted);">點選任一頁即可跳轉；每頁皆附對應 LLM Wiki 來源</p>
+      </div>
+      <button class="nav-btn" id="btnCloseOverview" type="button">關閉 (Esc)</button>
+    </div>
+    <div class="overview-grid" id="overviewGrid"></div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    const slides = Array.from(document.querySelectorAll('.slide'));
+    const total = slides.length;
+    let current = 0;
+
+    const progressFill = document.getElementById('progressFill');
+    const navTitle = document.getElementById('navTitle');
+    const navCounter = document.getElementById('navCounter');
+    const overviewOverlay = document.getElementById('overviewOverlay');
+    const overviewGrid = document.getElementById('overviewGrid');
+
+    function pad(n) { return String(n).padStart(2, '0'); }
+
+    function buildOverview() {
+      overviewGrid.innerHTML = '';
+      slides.forEach((s, idx) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'ov-item' + (idx === current ? ' current' : '');
+        btn.innerHTML =
+          '<div class="ov-num">SLIDE ' + pad(idx + 1) + '</div>' +
+          '<div class="ov-title">' + (s.dataset.title || '') + '</div>' +
+          '<div class="ov-src">' + (s.dataset.wiki || '') + '</div>';
+        btn.addEventListener('click', () => {
+          goTo(idx);
+          toggleOverview(false);
+        });
+        overviewGrid.appendChild(btn);
+      });
+    }
+
+    function goTo(index) {
+      if (index < 0) index = 0;
+      if (index >= total) index = total - 1;
+      slides[current].classList.remove('active');
+      current = index;
+      slides[current].classList.add('active');
+
+      const pct = ((current + 1) / total) * 100;
+      progressFill.style.width = pct + '%';
+      navCounter.textContent = pad(current + 1) + ' / ' + pad(total);
+      navTitle.textContent = slides[current].dataset.title || '';
+
+      Array.from(overviewGrid.children).forEach((el, i) => {
+        el.classList.toggle('current', i === current);
+      });
+    }
+
+    function toggleOverview(force) {
+      const open = typeof force === 'boolean' ? force : !overviewOverlay.classList.contains('open');
+      overviewOverlay.classList.toggle('open', open);
+      overviewOverlay.setAttribute('aria-hidden', String(!open));
+    }
+
+    document.getElementById('btnPrev').addEventListener('click', () => goTo(current - 1));
+    document.getElementById('btnNext').addEventListener('click', () => goTo(current + 1));
+    document.getElementById('btnOverview').addEventListener('click', () => toggleOverview());
+    document.getElementById('btnCloseOverview').addEventListener('click', () => toggleOverview(false));
+    overviewOverlay.addEventListener('click', (e) => {
+      if (e.target === overviewOverlay) toggleOverview(false);
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { toggleOverview(false); return; }
+      if (e.key === 'g' || e.key === 'G') { toggleOverview(); return; }
+      if (overviewOverlay.classList.contains('open')) return;
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+        e.preventDefault();
+        goTo(current + 1);
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        e.preventDefault();
+        goTo(current - 1);
+      } else if (e.key === 'Home') {
+        goTo(0);
+      } else if (e.key === 'End') {
+        goTo(total - 1);
+      }
+    });
+
+    // Touch swipe support
+    let touchStartX = null;
+    document.addEventListener('touchstart', (e) => { touchStartX = e.changedTouches[0].clientX; });
+    document.addEventListener('touchend', (e) => {
+      if (touchStartX === null) return;
+      const dx = e.changedTouches[0].clientX - touchStartX;
+      if (dx < -45) goTo(current + 1);
+      else if (dx > 45) goTo(current - 1);
+      touchStartX = null;
+    });
+
+    buildOverview();
+    goTo(0);
+  })();
+</script>
+</body>
+</html>
